@@ -1,0 +1,55 @@
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>KTxT</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  </head>
+  <body>
+    <div id="SHOW"></div>
+    <script>
+      function atou(str) {
+        return decodeURIComponent(escape(window.atob(str)));
+      }
+      function fetchDNS(url, type = 16) {
+        console.log("Querying (host:" + url + ",host=" + type + ")...");
+        if (!url.endsWith(".")) {
+          url = url + ".";
+        }
+        fetch("https://dns.alidns.com/resolve?name=" + url + "&type=" + type)
+          .then((response) => response.json())
+          .then((data) => {
+            data.Answer.forEach((element) => {
+              content = element.data
+                .slice(1, element.data.length - 1)
+                .replaceAll('"', "")
+                .replaceAll(" ", "");
+              console.log("Pursing...", content);
+              try {
+                docdata = atou(content);
+                console.log("Hit! Start render...");
+                document.getElementById("SHOW").innerHTML =
+                  marked.parse(docdata);
+                return true;
+              } catch (e) {
+                console.log("Skipping...");
+              }
+            });
+            return false;
+          });
+      }
+      var url = location.search;
+      if (url.indexOf("?") != -1) {
+        if(!fetchDNS(url.substring(url.indexOf("?") + 1,url.length))){
+            document.getElementById("SHOW").innerHTML =
+                  marked.parse("# We found nothing in this URL :(\n\n> Helo?\n\n> Anyone here?");
+        };
+      }else{
+        if(!fetchDNS(document.domain)){
+            document.getElementById("SHOW").innerHTML =
+                  marked.parse("# We found nothing in this Server :(\n\n> Helo?\n\n> Anyone here?");
+        };
+      }
+      
+    </script>
+  </body>
+</html>
