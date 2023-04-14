@@ -2,54 +2,194 @@
   <head>
     <meta charset="UTF-8" />
     <title>KTxT</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- <link
+      rel="stylesheet"
+      href="https://unpkg.com/mdui@1.0.2/dist/css/mdui.min.css"
+    /> -->
+    <script src="https://unpkg.com/marked@4.3.0/marked.min.js"></script>
+    <script src="index.js"></script>
   </head>
   <body>
-    <div id="SHOW"></div>
+    <div id="doc"></div>
     <script>
       function atou(str) {
         return decodeURIComponent(escape(window.atob(str)));
       }
-      function fetchDNS(url, type = 16) {
-        console.log("Querying (host:" + url + ",host=" + type + ")...");
-        if (!url.endsWith(".")) {
-          url = url + ".";
+      function safer_str(target) {
+        target = target
+          .replace(/(<br[^>]*>| |\s*)/g, "")
+          .replace(/\&/g, "&amp;")
+          .replace(/\"/g, "&quot;")
+          .replace(/\'/g, "&#39;")
+          .replace(/\</g, "&lt;")
+          .replace(/\>/g, "&gt;");
+        return target;
+      }
+      function resolvParams(url_test = location.href) {
+        let params = {};
+        let url = url_test;
+        if (url.indexOf("?") != -1) {
+          if (url.indexOf("&") == -1 && url.indexOf("=") == -1) {
+            if (url.indexOf("#") == -1) {
+              params.first_load = url.slice(url.indexOf("?") + 1);
+            } else {
+              params.first_load = url.slice(
+                url.indexOf("?") + 1,
+                url.indexOf("#")
+              );
+            }
+          } else {
+            let url_parser = new URL(url);
+            params.doh_server =
+              url_parser.searchParams.get("doh") ||
+              url_parser.searchParams.get("doh_server") ||
+              url_parser.searchParams.get("doh-server") ||
+              url_parser.searchParams.get("dns") ||
+              url_parser.searchParams.get("dns_server") ||
+              url_parser.searchParams.get("dns-server");
+            params.first_load =
+              url_parser.searchParams.get("target") ||
+              url_parser.searchParams.get("page") ||
+              url_parser.searchParams.get("url") ||
+              url_parser.searchParams.get("link") ||
+              url_parser.searchParams.get("p") ||
+              url_parser.searchParams.get("l") ||
+              url_parser.searchParams.get("name") ||
+              url_parser.searchParams.get("n") ||
+              url_parser.searchParams.get("t");
+          }
+        } else {
+          if (url.indexOf("#") != -1) {
+            function getQueryString(url, name) {
+              var re = /[\#&]?([^=]+)=([^&]*)/g;
+              var tokens;
+              while ((tokens = re.exec(url))) {
+                if (decodeURIComponent(tokens[1]) === name) {
+                  return decodeURIComponent(tokens[2]);
+                }
+              }
+              return null;
+            }
+            if (url.indexOf("#debug=&") != -1) {
+              params.doh_server =
+                getQueryString(url, "doh") ||
+                getQueryString(url, "doh_server") ||
+                getQueryString(url, "doh-server") ||
+                getQueryString(url, "dns") ||
+                getQueryString(url, "dns_server") ||
+                getQueryString(url, "dns-server");
+              params.first_load =
+                getQueryString(url, "target") ||
+                getQueryString(url, "page") ||
+                getQueryString(url, "url") ||
+                getQueryString(url, "link") ||
+                getQueryString(url, "p") ||
+                getQueryString(url, "l") ||
+                getQueryString(url, "name") ||
+                getQueryString(url, "n") ||
+                getQueryString(url, "t");
+            }
+          }
         }
-        fetch("https://dns.alidns.com/resolve?name=" + url + "&type=" + type)
+        return params;
+      }
+      let gparams = resolvParams();
+      window.ktxt_config = {
+        doh_server: "dns.alidns.com",
+        first_load: document.domain,
+      };
+      if (gparams.doh_server) {
+        ktxt_config.doh_server = gparams.doh_server;
+      }
+      if (gparams.first_load) {
+        ktxt_config.first_load = gparams.first_load;
+      }
+      function resolvURL(url, type = 16, doh_url = "") {
+        console.debug(
+          "Resolving Host (host:" + url + ", type=" + type + ")..."
+        );
+        let ret = [];
+        fetch("https://" + dohurl + "resolve?name=" + url + "&type=" + type)
           .then((response) => response.json())
           .then((data) => {
+            //   console.debug(data);
             data.Answer.forEach((element) => {
               content = element.data
                 .slice(1, element.data.length - 1)
                 .replaceAll('"', "")
                 .replaceAll(" ", "");
-              console.log("Pursing...", content);
-              try {
-                docdata = atou(content);
-                console.log("Hit! Start render...");
-                document.getElementById("SHOW").innerHTML =
-                  marked.parse(docdata);
-                return true;
-              } catch (e) {
-                console.log("Skipping...");
-              }
+              ret[ret.length] = content;
             });
-            return false;
           });
+        return ret;
       }
-      var url = location.search;
-      if (url.indexOf("?") != -1) {
-        if(!fetchDNS(url.substring(url.indexOf("?") + 1,url.length))){
-            document.getElementById("SHOW").innerHTML =
-                  marked.parse("# We found nothing in this URL :(\n\n> Helo?\n\n> Anyone here?");
-        };
-      }else{
-        if(!fetchDNS(document.domain)){
-            document.getElementById("SHOW").innerHTML =
-                  marked.parse("# We found nothing in this Server :(\n\n> Helo?\n\n> Anyone here?");
-        };
+      if (!ktxt_config.first_load.endsWith(".")) {
+        ktxt_config.first_load = ktxt_config.first_load + ".";
       }
-      
+      fetch(
+        "https://" +
+          ktxt_config.doh_server +
+          "/resolve?name=" +
+          ktxt_config.first_load +
+          "&type=16"
+      )
+        .then((resp) => resp.json())
+        .then((data) => {
+          // console.log(data)
+          let pages = [];
+          data.Answer.forEach((item) => {
+            let content = item.data
+              .slice(1, item.data.length - 1)
+              .replaceAll('"', "")
+              .replaceAll(" ", "");
+            try {
+              let page = atou(content);
+              pages[pages.length] = page;
+            } catch (e) {}
+          });
+          return pages;
+        })
+        .then((pages) => {
+          if (pages.length == 1) {
+            return pages[0];
+          }
+          let page_ordered = [];
+          pages.forEach((item) => {
+            let page_number = page_ordered.length;
+            let line0 = item.split("\n")[0];
+            if (line0.startsWith("<!---") && line0.endsWith("--->")) {
+              page_number = parseInt(
+                line0
+                  .split(line0.indexOf("<!---") + 6, line0.indexOf("--->"))
+                  .replaceAll(" ", "")
+              );
+            }
+            page_ordered[page_number] = item;
+          });
+          let doc = "";
+          page_ordered.forEach((item) => {
+            doc = doc + item;
+          });
+        })
+        .then((doc) => {
+          let doc_final;
+          if(!doc){
+            doc_final = "# Failed to load document :(\nDocument is empty..."
+          }else{
+            doc_final = doc
+          }
+          document.getElementById("doc").innerHTML = marked.parse(doc_final);
+        }).catch((e) => {
+          let err = "# Failed to load document :(\nError Occurred!\n```text\n"+e+"\n```\n"
+          let solve;
+          if(e == "TypeError: Cannot read properties of undefined (reading 'forEach')"){
+            solve = "出现这个异常**可能是**因为输入的URL地址出现了问题导致DNS无法解析。\n\n或者是因为DNS因为过载导致拒绝服务。"
+          }else{
+            solve = ""
+          }
+          document.getElementById("doc").innerHTML = marked.parse(err + solve);
+        });
     </script>
+    <!-- <script src="https://unpkg.com/mdui@1.0.2/dist/js/mdui.min.js"></script> -->
   </body>
 </html>
